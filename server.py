@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from database.db_config import get_mongo_client
 from uvicorn.main import run
 from routes.ticket_route import ticket_router
+from fastapi.middleware.cors import CORSMiddleware
 
 
 
@@ -15,6 +16,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(ticket_router)
-
+app.add_middleware(CORSMiddleware,allow_origins=["*"])
 if __name__ == "__main__":
     run("server:app", host="127.0.0.1", port=3500)
