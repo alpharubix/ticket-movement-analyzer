@@ -17,21 +17,29 @@ class Ticket:
             response = requests.get(f"https://desk.zoho.com/api/v1/tickets/search?limit=1&ticketNumber={ticket_id}",
                                    headers=header)
             data = response.json()
-            print(data)
             if not data:
-                return None
+                return None, None
+
             ticket = data.get("data")[0]
-            ticket_login =  ticket.get("customFields", {}).get("Ticket Login", "")
+
+            # FIX 2: Handle 'assignee' being explicitly None
+            # (ticket.get('assignee') or {}) ensures we have a dict even if the value is None
+            assignee = ticket.get('assignee') or {}
+            first_name = assignee.get('firstName', '')
+            last_name = assignee.get('lastName', '')
+
+            ticket_login = ticket.get("customFields", {}).get("Ticket Login", "")
+
             if ticket_login == 'Approved':
                 ticket_login_date = ticket.get("customFields").get("Ticket Login Date")
             else:
                 ticket_login_date = ticket.get("customFields").get("Rejected SH")
+
             result = {
                 "ticket_id": ticket.get("id", ""),
                 "account_name": ticket.get("contact", {}).get("account", {}).get("accountName", ""),
-                "account_owner": f"{ticket.get('assignee', {}).get('firstName', '')} "
-                                 f"{ticket.get('assignee', {}).get('lastName', '')}".strip(),
-                "ticket_login": ticket.get("customFields", {}).get("Ticket Login", ""),
+                "account_owner": f"{first_name} {last_name}".strip(),  # Use the safe variables
+                "ticket_login": ticket_login,
                 "ticket_login_date": ticket_login_date,
                 "created_date": ticket.get("createdTime")
             }
@@ -39,11 +47,14 @@ class Ticket:
             return {
                 "id": ticket.get("id"),
                 "createdTime": ticket.get("createdTime"),
-                "ticket_login_status":ticket_login,
-                "ticket_login_date":ticket_login_date
-            },result
+                "ticket_login_status": ticket_login,
+                "ticket_login_date": ticket_login_date
+            }, result
+
         except Exception as e:
-            print("error raised while getting ticket based on_id",e)
+            print("error raised while getting ticket based on_id", e)
+        # FIX 3: Return two values (or raise HTTPException) to prevent 'cannot unpack' error
+        return None, None
 
     def get_ticket_history(self,ticket_dict):
         try:
