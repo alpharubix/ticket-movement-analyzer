@@ -21,6 +21,7 @@ class Ticket:
                 return None, None
 
             ticket = data.get("data")[0]
+            print(ticket)
 
             # FIX 2: Handle 'assignee' being explicitly None
             # (ticket.get('assignee') or {}) ensures we have a dict even if the value is None
@@ -49,6 +50,7 @@ class Ticket:
                 "createdTime": ticket.get("createdTime"),
                 "ticket_login_status": ticket_login,
                 "ticket_login_date": ticket_login_date
+                # "ticket_owner":
             }, result
 
         except Exception as e:
@@ -94,50 +96,79 @@ class Ticket:
         except Exception as e:
             print("error raised while getting ticket history based",e)
 
-    def transform_data_for_frontend(self,logs,creation_time_str):
+        from datetime import datetime, timezone
 
-        # 1. Inject Creation Event
-        creation_event = {'eventTime': creation_time_str, 'propertyName': 'Case Status',
-                          'updatedValue': 'Yet to Lender Login'}
-        status_logs = [l for l in logs if l.get('propertyName') == 'Case Status']
-        status_logs.append(creation_event)
+    def transform_data_for_frontend(self, logs, creation_time_str):
 
-        # 2. Filter and Sort
-        status_logs.sort(key=lambda x: x['eventTime'])
+            # 1. Inject Creation Event
+            creation_event = {
+                'eventTime': creation_time_str,
+                'propertyName': 'Case Status',
+                'updatedValue': 'Yet to Lender Login'
+            }
 
-        gantt_data = []
+            status_logs = [l for l in logs if l.get('propertyName') == 'Case Status']
+            status_logs.append(creation_event)
 
-        # 3. Calculate Intervals (Loop runs until the second-to-last log)
-        for i in range(len(status_logs) - 1):
-            current_event = status_logs[i]
-            next_event = status_logs[i + 1]
+            # 2. Sort by time
+            status_logs.sort(key=lambda x: x['eventTime'])
 
-            t1 = parse_time(current_event['eventTime'])
-            t2 = parse_time(next_event['eventTime'])
-            duration_seconds = (t2 - t1).total_seconds()
+            status_duration = {}  # seconds
+            status_start = {}
+            status_end = {}
 
-            gantt_data.append({
-                "id": i + 1,
-                "status": current_event['updatedValue'],
-                "start_time": current_event['eventTime'],
-                "end_time": next_event['eventTime'],
-                "duration_human": format_duration(duration_seconds)
-            })
+            # 3. Calculate durations between consecutive events
+            for i in range(len(status_logs) - 1):
+                current_event = status_logs[i]
+                next_event = status_logs[i + 1]
 
-        # 4. Handle Ongoing Status
-        final_event = status_logs[-1]
-        final_start_time = parse_time(final_event['eventTime'])
-        now_utc = datetime.now(timezone.utc)
-        final_duration_seconds = (now_utc - final_start_time).total_seconds()
+                status = current_event['updatedValue']
 
-        gantt_data.append({
-            "id": len(status_logs),
-            "status": final_event['updatedValue'],
-            "start_time": final_event['eventTime'],
-            "end_time": None,  # Null end time signals an ongoing status
-            "duration_human": format_duration(final_duration_seconds) + " (Ongoing)"
-        })
-        print(gantt_data)
-        # Convert the Python list to a JSON string for the frontend
-        return gantt_data
+                t1 = parse_time(current_event['eventTime'])
+                t2 = parse_time(next_event['eventTime'])
+                duration_seconds = (t2 - t1).total_seconds()
+
+                status_duration[status] = status_duration.get(status, 0) + duration_seconds
+
+                if status not in status_start:
+                    status_start[status] = current_event['eventTime']
+
+                status_end[status] = next_event['eventTime']
+
+            # 4. Handle ongoing status
+            final_event = status_logs[-1]
+            final_status = final_event['updatedValue']
+            final_start_time = parse_time(final_event['eventTime'])
+
+            now_utc = datetime.now(timezone.utc)
+            ongoing_seconds = (now_utc - final_start_time).total_seconds()
+
+            status_duration[final_status] = status_duration.get(final_status, 0) + ongoing_seconds
+
+            if final_status not in status_start:
+                status_start[final_status] = final_event['eventTime']
+
+            status_end[final_status] = None
+
+            # 5. Build frontend response
+            gantt_data = []
+            for idx, status in enumerate(status_duration, start=1):
+                total_seconds = status_duration[status]
+                total_days = int(round(total_seconds / 86400, 2))
+
+                gantt_data.append({
+                    "id": idx,
+                    "status": status,
+                    "start_time": status_start[status],
+                    "end_time": status_end[status],
+                    "duration_human": (
+                            format_duration(total_seconds) +
+                            (" (Ongoing)" if status_end[status] is None else "")
+                    ),
+                    "total_duration_days": total_days
+                })
+
+            return gantt_data
+
+
 
