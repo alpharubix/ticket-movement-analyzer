@@ -96,68 +96,88 @@ class Ticket:
         except Exception as e:
             print("error raised while getting ticket history based",e)
 
-        from datetime import datetime, timezone
-        from datetime import datetime, timezone
-
     def parse_time(self,ts: str) -> datetime:
             return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
     def transform_data_for_frontend(self, logs, creation_time_str):
-            creation_event = {
-                    'eventTime': creation_time_str,
-                     'propertyName': 'Case Status',
-                     'updatedValue': 'Yet to Lender Login'
-                 }
-            status_logs = [
-                l for l in logs if l.get("propertyName") == "Case Status"
-            ]
-            status_logs.append(creation_event)
-            # 2. Sort chronologically
-            status_logs.sort(key=lambda x: x["eventTime"])
+        # 1. Inject creation event
+        creation_event = {
+            "eventTime": creation_time_str,
+            "propertyName": "Case Status",
+            "updatedValue": "Yet to Lender Login"
+        }
 
-            status_totals = {}  # status → total seconds
-            status_occurrences = []  # per occurrence
-            total_seconds = 0
+        status_logs = [
+            l for l in logs if l.get("propertyName") == "Case Status"
+        ]
+        status_logs.append(creation_event)
 
-            # 3. Iterate over transitions
-            for i in range(len(status_logs) - 1):
-                curr = status_logs[i]
-                nxt = status_logs[i + 1]
+        # 2. Sort chronologically
+        status_logs.sort(key=lambda x: x["eventTime"])
 
-                status = curr["updatedValue"]
+        status_totals = {}  # status → total seconds
+        status_occurrences = []  # per occurrence
+        total_seconds = 0
 
-                t1 = self.parse_time(curr["eventTime"])
-                t2 = self.parse_time(nxt["eventTime"])
+        # 3. Handle completed transitions
+        for i in range(len(status_logs) - 1):
+            curr = status_logs[i]
+            nxt = status_logs[i + 1]
 
-                seconds = (t2 - t1).total_seconds()
-                hours = round(seconds / 3600, 2)
+            status = curr["updatedValue"]
 
-                # per-occurrence
-                status_occurrences.append({
-                    "status": status,
-                    "start_time": curr["eventTime"],
-                    "end_time": nxt["eventTime"],
-                    "duration_hours": hours
-                })
+            t1 = self.parse_time(curr["eventTime"])
+            t2 = self.parse_time(nxt["eventTime"])
 
-                # per-status total
-                status_totals[status] = status_totals.get(status, 0) + seconds
-                total_seconds += seconds
+            seconds = (t2 - t1).total_seconds()
+            hours = round(seconds / 3600, 2)
 
-            # 4. Build total summary in DAYS
-            status_totals_days = [
-                {
-                    "status": status,
-                    "total_days": int(round(seconds / 86400, 2))
-                }
-                for status, seconds in status_totals.items()
-            ]
+            status_occurrences.append({
+                "status": status,
+                "start_time": curr["eventTime"],
+                "end_time": nxt["eventTime"],
+                "duration_hours": hours
+            })
 
-            return {
-                # "total_duration_days": round(total_seconds / 86400, 2),
-                "status_totals": status_totals_days,
-                "status_occurrences": status_occurrences
+            status_totals[status] = status_totals.get(status, 0) + seconds
+            total_seconds += seconds
+
+        # 4. 🔥 Handle ONGOING (last) status
+        final_event = status_logs[-1]
+        final_status = final_event["updatedValue"]
+
+        final_start_time = self.parse_time(final_event["eventTime"])
+        now_utc = datetime.now(timezone.utc)
+
+        ongoing_seconds = (now_utc - final_start_time).total_seconds()
+        ongoing_hours = round(ongoing_seconds / 3600, 2)
+
+        # per-occurrence (no end_time)
+        status_occurrences.append({
+            "status": final_status,
+            "start_time": final_event["eventTime"],
+            "end_time": None,
+            "duration_hours": ongoing_hours
+        })
+
+        # per-status total
+        status_totals[final_status] = status_totals.get(final_status, 0) + ongoing_seconds
+        total_seconds += ongoing_seconds
+
+        # 5. Build total summary in DAYS
+        status_totals_days = [
+            {
+                "status": status,
+                "total_days": round(seconds / 86400, 2)
             }
+            for status, seconds in status_totals.items()
+        ]
+
+        return {
+            "total_duration_days": round(total_seconds / 86400, 2),
+            "status_totals": status_totals_days,
+            "status_occurrences": status_occurrences
+        }
 
     # def transform_data_for_frontend(self, logs, creation_time_str):
     #         print("The logs",logs)
