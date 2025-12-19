@@ -168,13 +168,13 @@ class Ticket:
         status_totals_days = [
             {
                 "status": status,
-                "total_days": round(seconds / 86400, 2)
+                "total_days": f"{int(seconds // 86400)}D{int((seconds % 86400) // 3600)}hrs"
             }
             for status, seconds in status_totals.items()
         ]
 
         return {
-            "total_duration_days": round(total_seconds / 86400, 2),
+            "total_duration_days": f"{int(total_seconds // 86400)}D{int((total_seconds % 86400) // 3600)}hrs",
             "status_totals": status_totals_days,
             "status_occurrences": status_occurrences
         }
