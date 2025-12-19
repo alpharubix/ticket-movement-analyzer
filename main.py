@@ -1,5 +1,7 @@
-
+import os
 from contextlib import asynccontextmanager
+
+import uvicorn
 from fastapi import FastAPI
 from database.db_config import get_mongo_client
 from uvicorn.main import run
@@ -28,4 +30,5 @@ app.add_middleware(
 app.include_router(ticket_router)
 app.add_middleware(CORSMiddleware,allow_origins=["*"])
 if __name__ == "__main__":
-    run("server:app", host="127.0.0.1", port=3500)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
