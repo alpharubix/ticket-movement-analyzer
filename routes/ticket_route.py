@@ -6,6 +6,7 @@ from controller.ticket_controller import Ticket
 
 ticket_router = APIRouter()
 
+
 @ticket_router.get("/get-ticket-status")
 async def get_ticket_status(ticket_id:int):
      token = await token_validator()

@@ -15,6 +15,9 @@ async def lifespan(app: FastAPI):
       get_mongo_client().close()
 
 app = FastAPI(lifespan=lifespan)
+@app.get('/')
+def health_check():
+    return {'message': 'server is up and running'}
 app.include_router(ticket_router)
 app.add_middleware(CORSMiddleware,allow_origins=["*"])
 if __name__ == "__main__":
